@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import streamlit as st
 
+from PIL import Image
 from streamlit_tags import st_tags
 
 st.title("Takon")
@@ -9,23 +10,30 @@ st.title("Takon")
 GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=GOOGLE_API_KEY)
 
-if "gemini_model" not in st.session_state:
-    st.session_state["gemini_model"] = "gemini-pro"
-
-model = genai.GenerativeModel(st.session_state["gemini_model"])
-
 col1, col2 = st.columns(2)
 
 with col1:
     with st.expander("Model settings"):
         model_selected = st.selectbox(
             label="Model",
-            options=("gemini-pro",),
+            options=("gemini-pro", "gemini-pro-vision"),
             placeholder="Select a model",
             label_visibility="collapsed",
         )
 
-        if model_selected == "gemini-pro":
+        # Define state session of the model
+        st.session_state["model"] = model_selected
+
+        if st.session_state["model"] == "gemini-pro" or st.session_state["model"] == "gemini-pro-vision":
+            model = genai.GenerativeModel(st.session_state["model"])
+
+            if st.session_state["model"] == "gemini-pro":
+                max_output_tokens_value = 2048
+                top_k_value = 1
+            else:
+                max_output_tokens_value = 4096
+                top_k_value = 32
+
             # The help section for each component is taken from https://ai.google.dev/docs/concepts#model_parameters
             temperature = st.slider(
                 label="Temperature",
@@ -43,8 +51,8 @@ with col1:
             max_output_tokens = st.number_input(
                 label="Max output token",
                 min_value=1,
-                max_value=2048,
-                value=2048,
+                max_value=max_output_tokens_value,
+                value=max_output_tokens_value,
                 step=1,
                 help="Specifies the maximum number of tokens that can be generated in the response. A token "
                      "is approximately four characters. 100 tokens correspond to roughly 60-80 words."
@@ -52,7 +60,7 @@ with col1:
             top_k = st.number_input(
                 label="Top K",
                 min_value=1,
-                value=1,
+                value=top_k_value,
                 step=1,
                 help="The topK parameter changes how the model selects tokens for output. A topK of 1 means "
                      "the selected token is the most probable among all the tokens in the model's vocabulary "
@@ -91,6 +99,12 @@ with col1:
                 stop_sequences=stop_sequences,
             )
 
+# Image input form
+if st.session_state["model"] == "gemini-pro-vision":
+    if file := st.file_uploader(label="Upload an image"):
+        image_file = Image.open(file)
+        st.image(image_file)
+
 # Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -124,10 +138,25 @@ if prompt := st.chat_input("What is up?"):
         ]
 
         with st.spinner("Wait for it..."):
-            response = model.generate_content(
-                contents=messages,
-                generation_config=generation_config,
-            )
+            if st.session_state["model"] == "gemini-pro":
+                # The gemini-pro model can handle a multi-turn conversational format. This
+                # model only accepts text as input.
+                response = model.generate_content(
+                    contents=messages,
+                    generation_config=generation_config,
+                )
+
+            elif st.session_state["model"] == "gemini-pro-vision":
+                # The gemini-pro-vision model does not handle multi-turn conversational formats.
+                # But, it accepts multimodal input in the form of images and text. Therefore,
+                # for this model, only single-turn chats can be conducted.
+                #
+                # However, the application can still receive input in the form of the next chat, but
+                # the text input value used is only the last chat.
+                response = model.generate_content(
+                    contents=[st.session_state.messages[-1]["content"], image_file],
+                    generation_config=generation_config,
+                )
             message_placeholder.markdown(response.text)
 
     # Add assistant response to chat history
