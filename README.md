@@ -8,7 +8,7 @@ models include:
 
 - Google Gemini
   - gemini-pro
-  - gemini-pro-vision (coming soon)
+  - gemini-pro-vision
 - GPT (coming soon)
 
 The User Interface (UI) of this application is created using [Streamlit](https://streamlit.io/).
